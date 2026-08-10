@@ -1,0 +1,54 @@
+!SESSION 2026-07-31 14:27:04.568 -----------------------------------------------
+eclipse.buildId=Version 2.1.0
+java.version=21.0.9
+java.vendor=Eclipse Adoptium
+BootLoader constants: OS=linux, ARCH=x86_64, WS=gtk, NL=en_IN
+Command-line arguments:  -os linux -ws gtk -arch x86_64 -data /home/sunbeam/project/RTOS-CAN-based-Vehicle-Accident-Detection-System/Accelerometer_CAN
+
+!ENTRY com.st.stm32cube.ide.mcu.informationcenter 1 1 2026-07-31 14:27:09.320
+!MESSAGE Log4j2 initialized with config file /home/sunbeam/project/RTOS-CAN-based-Vehicle-Accident-Detection-System/Accelerometer_CAN/.metadata/.log4j2.xml
+
+!ENTRY com.st.stm32cube.ide.mcu.ide 1 1 2026-07-31 14:27:12.172
+!MESSAGE Started RMI Server, listening on port 41337
+
+!ENTRY org.eclipse.cdt.core 1 0 2026-07-31 14:27:52.565
+!MESSAGE Indexed 'project_reciver' (24 sources, 121 headers) in 3.94 sec: 11,676 declarations; 50,648 references; 1 unresolved inclusions; 76 syntax errors; 240 unresolved names (0.38%)
+
+!ENTRY org.eclipse.cdt.core 1 0 2026-07-31 14:28:36.690
+!MESSAGE Indexed 'project' (23 sources, 120 headers) in 2.22 sec: 11,645 declarations; 50,586 references; 1 unresolved inclusions; 76 syntax errors; 240 unresolved names (0.38%)
+!SESSION 2026-07-31 14:52:38.393 -----------------------------------------------
+eclipse.buildId=Version 2.1.0
+java.version=21.0.9
+java.vendor=Eclipse Adoptium
+BootLoader constants: OS=linux, ARCH=x86_64, WS=gtk, NL=en_IN
+Command-line arguments:  -os linux -ws gtk -arch x86_64
+
+!ENTRY com.st.stm32cube.ide.mcu.informationcenter 1 1 2026-07-31 14:52:42.441
+!MESSAGE Log4j2 initialized with config file /home/sunbeam/project/RTOS-CAN-based-Vehicle-Accident-Detection-System/Accelerometer_CAN/.metadata/.log4j2.xml
+
+!ENTRY com.st.stm32cube.ide.mcu.ide 1 1 2026-07-31 14:52:47.651
+!MESSAGE Started RMI Server, listening on port 41337
+!SESSION 2026-07-31 15:25:56.652 -----------------------------------------------
+eclipse.buildId=Version 2.1.0
+java.version=21.0.9
+java.vendor=Eclipse Adoptium
+BootLoader constants: OS=linux, ARCH=x86_64, WS=gtk, NL=en_IN
+Command-line arguments:  -os linux -ws gtk -arch x86_64 -data /home/sunbeam/project/RTOS-CAN-based-Vehicle-Accident-Detection-System/Accelerometer_CAN
+
+!ENTRY com.st.stm32cube.ide.mcu.informationcenter 1 1 2026-07-31 15:26:00.458
+!MESSAGE Log4j2 initialized with config file /home/sunbeam/project/RTOS-CAN-based-Vehicle-Accident-Detection-System/Accelerometer_CAN/.metadata/.log4j2.xml
+
+!ENTRY com.st.stm32cube.ide.mcu.ide 1 1 2026-07-31 15:26:05.454
+!MESSAGE Started RMI Server, listening on port 41337
+!SESSION 2026-07-31 15:47:36.477 -----------------------------------------------
+eclipse.buildId=Version 2.1.0
+java.version=21.0.9
+java.vendor=Eclipse Adoptium
+BootLoader constants: OS=linux, ARCH=x86_64, WS=gtk, NL=en_IN
+Command-line arguments:  -os linux -ws gtk -arch x86_64
+
+!ENTRY com.st.stm32cube.ide.mcu.informationcenter 1 1 2026-07-31 15:47:40.485
+!MESSAGE Log4j2 initialized with config file /home/sunbeam/project/RTOS-CAN-based-Vehicle-Accident-Detection-System/Accelerometer_CAN/.metadata/.log4j2.xml
+
+!ENTRY com.st.stm32cube.ide.mcu.ide 1 1 2026-07-31 15:47:46.704
+!MESSAGE Started RMI Server, listening on port 41337

@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>
+        Vehicle Accident Monitoring System
+    </title>
+
+
+    <!-- Google Font -->
+
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+        rel="stylesheet"
+    >
+
+
+    <!-- Dashboard CSS -->
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='css/dashboard.css') }}"
+    >
+
+
+    <!-- Leaflet CSS -->
+
+    <link
+        rel="stylesheet"
+        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    >
+
+</head>
+
+
+<body>
+
+
+<!-- =====================================================
+     SIDEBAR
+===================================================== -->
+
+<div class="sidebar">
+
+    <div class="logo-section">
+
+        <div class="logo-icon">
+            🚗
+        </div>
+
+        <div>
+
+            <h2>
+                Accident
+            </h2>
+
+            <p>
+                Monitoring System
+            </p>
+
+        </div>
+
+    </div>
+
+
+    <nav>
+
+        <a
+            href="#dashboard"
+            class="nav-link active"
+        >
+
+            <span>📊</span>
+
+            Dashboard
+
+        </a>
+
+
+        <a
+            href="#live-alert"
+            class="nav-link"
+        >
+
+            <span>🚨</span>
+
+            Live Alerts
+
+        </a>
+
+
+        <a
+            href="#map-section"
+            class="nav-link"
+        >
+
+            <span>📍</span>
+
+            Accident Map
+
+        </a>
+
+
+        <a
+            href="#history-section"
+            class="nav-link"
+        >
+
+            <span>📋</span>
+
+            Accident History
+
+        </a>
+
+    </nav>
+
+
+    <div class="sidebar-footer">
+
+        <p>
+            FreeRTOS + CAN
+        </p>
+
+        <span>
+            Vehicle Safety System
+        </span>
+
+    </div>
+
+</div>
+
+
+
+<!-- =====================================================
+     MAIN CONTENT
+===================================================== -->
+
+<div class="main-content">
+
+
+    <!-- =================================================
+         TOP HEADER
+    ================================================== -->
+
+    <header class="top-header">
+
+        <div>
+
+            <h1>
+                Vehicle Accident Dashboard
+            </h1>
+
+            <p>
+                Real-time accident detection and monitoring
+            </p>
+
+        </div>
+
+
+        <div class="system-status">
+
+            <span class="status-dot"></span>
+
+            <span>
+                SYSTEM ONLINE
+            </span>
+
+        </div>
+
+    </header>
+
+
+
+    <!-- =================================================
+         STATISTICS CARDS
+    ================================================== -->
+
+    <section
+        class="stats-grid"
+        id="dashboard"
+    >
+
+
+        <!-- Total Vehicles -->
+
+        <div class="stat-card blue-card">
+
+            <div class="stat-icon">
+                🚗
+            </div>
+
+            <div>
+
+                <p>
+                    Registered Vehicles
+                </p>
+
+                <h2 id="vehicle-count">
+                    0
+                </h2>
+
+            </div>
+
+        </div>
+
+
+
+        <!-- Total Accidents -->
+
+        <div class="stat-card red-card">
+
+            <div class="stat-icon">
+                🚨
+            </div>
+
+            <div>
+
+                <p>
+                    Total Accidents
+                </p>
+
+                <h2 id="accident-count">
+                    0
+                </h2>
+
+            </div>
+
+        </div>
+
+
+
+        <!-- Today's Accidents -->
+
+        <div class="stat-card orange-card">
+
+            <div class="stat-icon">
+                📅
+            </div>
+
+            <div>
+
+                <p>
+                    Today's Accidents
+                </p>
+
+                <h2 id="today-count">
+                    0
+                </h2>
+
+            </div>
+
+        </div>
+
+
+
+        <!-- System Status -->
+
+        <div class="stat-card green-card">
+
+            <div class="stat-icon">
+                🟢
+            </div>
+
+            <div>
+
+                <p>
+                    System Status
+                </p>
+
+                <h2>
+                    Active
+                </h2>
+
+            </div>
+
+        </div>
+
+
+    </section>
+
+
+
+    <!-- =================================================
+         LIVE ACCIDENT ALERT
+    ================================================== -->
+
+    <section
+        id="live-alert"
+        class="alert-section"
+    >
+
+        <div class="section-title">
+
+            <h2>
+                🚨 Live Accident Alert
+            </h2>
+
+            <span class="live-badge">
+                LIVE
+            </span>
+
+        </div>
+
+
+        <div
+            id="no-alert"
+            class="no-alert"
+        >
+
+            <div class="no-alert-icon">
+                ✓
+            </div>
+
+            <div>
+
+                <h3>
+                    No Active Accident
+                </h3>
+
+                <p>
+                    The system is monitoring vehicles in real time.
+                </p>
+
+            </div>
+
+        </div>
+
+
+        <!-- Accident alert -->
+
+        <div
+            id="accident-alert"
+            class="accident-alert hidden"
+        >
+
+            <div class="alert-header">
+
+                <div>
+
+                    <span class="danger-icon">
+                        🚨
+                    </span>
+
+                    <strong>
+                        ACCIDENT DETECTED
+                    </strong>
+
+                </div>
+
+                <span
+                    id="alert-time"
+                    class="alert-time"
+                >
+                </span>
+
+            </div>
+
+
+            <div class="alert-content">
+
+
+                <div class="info-box">
+
+                    <span>
+                        Vehicle Number
+                    </span>
+
+                    <strong id="alert-vehicle">
+                        -
+                    </strong>
+
+                </div>
+
+
+                <div class="info-box">
+
+                    <span>
+                        Vehicle Type
+                    </span>
+
+                    <strong id="alert-type">
+                        -
+                    </strong>
+
+                </div>
+
+
+                <div class="info-box">
+
+                    <span>
+                        Owner
+                    </span>
+
+                    <strong id="alert-owner">
+                        -
+                    </strong>
+
+                </div>
+
+
+                <div class="info-box">
+
+                    <span>
+                        Contact
+                    </span>
+
+                    <strong id="alert-phone">
+                        -
+                    </strong>
+
+                </div>
+
+
+                <div class="info-box">
+
+                    <span>
+                        Latitude
+                    </span>
+
+                    <strong id="alert-latitude">
+                        -
+                    </strong>
+
+                </div>
+
+
+                <div class="info-box">
+
+                    <span>
+                        Longitude
+                    </span>
+
+                    <strong id="alert-longitude">
+                        -
+                    </strong>
+
+                </div>
+
+
+            </div>
+
+
+            <button
+                id="view-location-btn"
+                class="location-btn"
+            >
+
+                📍 View Accident Location
+
+            </button>
+
+        </div>
+
+    </section>
+
+
+
+    <!-- =================================================
+         MAP + LATEST ACCIDENT
+    ================================================== -->
+
+    <section
+        class="map-info-grid"
+        id="map-section"
+    >
+
+
+        <!-- MAP -->
+
+        <div class="card map-card">
+
+            <div class="card-header">
+
+                <h2>
+                    📍 Accident Location
+                </h2>
+
+                <span>
+                    GPS
+                </span>
+
+            </div>
+
+
+            <div id="map"></div>
+
+        </div>
+
+
+
+        <!-- LATEST ACCIDENT -->
+
+        <div class="card latest-card">
+
+            <div class="card-header">
+
+                <h2>
+                    Latest Accident
+                </h2>
+
+            </div>
+
+
+            <div class="latest-info">
+
+
+                <div class="latest-row">
+
+                    <span>
+                        Accident ID
+                    </span>
+
+                    <strong id="latest-id">
+                        -
+                    </strong>
+
+                </div>
+
+
+                <div class="latest-row">
+
+                    <span>
+                        Vehicle
+                    </span>
+
+                    <strong id="latest-vehicle">
+                        -
+                    </strong>
+
+                </div>
+
+
+                <div class="latest-row">
+
+                    <span>
+                        Owner
+                    </span>
+
+                    <strong id="latest-owner">
+                        -
+                    </strong>
+
+                </div>
+
+
+                <div class="latest-row">
+
+                    <span>
+                        Phone
+                    </span>
+
+                    <strong id="latest-phone">
+                        -
+                    </strong>
+
+                </div>
+
+
+                <div class="latest-row">
+
+                    <span>
+                        Latitude
+                    </span>
+
+                    <strong id="latest-latitude">
+                        -
+                    </strong>
+
+                </div>
+
+
+                <div class="latest-row">
+
+                    <span>
+                        Longitude
+                    </span>
+
+                    <strong id="latest-longitude">
+                        -
+                    </strong>
+
+                </div>
+
+
+                <div class="latest-row">
+
+                    <span>
+                        Time
+                    </span>
+
+                    <strong id="latest-time">
+                        -
+                    </strong>
+
+                </div>
+
+
+            </div>
+
+        </div>
+
+
+    </section>
+
+
+
+    <!-- =================================================
+         ACCIDENT HISTORY
+    ================================================== -->
+
+    <section
+        class="card history-card"
+        id="history-section"
+    >
+
+        <div class="card-header">
+
+            <div>
+
+                <h2>
+                    📋 Accident History
+                </h2>
+
+                <p>
+                    Previously recorded accidents
+                </p>
+
+            </div>
+
+
+            <button
+                class="refresh-btn"
+                onclick="loadAccidentHistory()"
+            >
+
+                🔄 Refresh
+
+            </button>
+
+        </div>
+
+
+        <div class="table-container">
+
+            <table>
+
+                <thead>
+
+                    <tr>
+
+                        <th>
+                            ID
+                        </th>
+
+                        <th>
+                            Vehicle No
+                        </th>
+
+                        <th>
+                            Vehicle Type
+                        </th>
+
+                        <th>
+                            Owner
+                        </th>
+
+                        <th>
+                            Phone
+                        </th>
+
+                        <th>
+                            Latitude
+                        </th>
+
+                        <th>
+                            Longitude
+                        </th>
+
+                        <th>
+                            Time
+                        </th>
+
+                    </tr>
+
+                </thead>
+
+
+                <tbody id="accident-table-body">
+
+                    <tr>
+
+                        <td
+                            colspan="8"
+                            class="empty-table"
+                        >
+
+                            No accident records found
+
+                        </td>
+
+                    </tr>
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    </section>
+
+
+
+    <!-- =================================================
+         SIMULATE ACCIDENT
+    ================================================== -->
+
+    <section class="test-section">
+
+        <h3>
+            🧪 Development Testing
+        </h3>
+
+        <p>
+            Use this button to simulate an accident
+            while testing the real-time dashboard.
+        </p>
+
+
+        <button
+            id="simulate-btn"
+            class="simulate-btn"
+        >
+
+            🚨 Simulate Accident
+
+        </button>
+
+    </section>
+
+
+</div>
+
+
+
+<!-- =====================================================
+     LEAFLET JS
+===================================================== -->
+
+<script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+></script>
+
+
+<!-- =====================================================
+     SOCKET.IO CLIENT
+===================================================== -->
+
+<script
+    src="https://cdn.socket.io/4.7.5/socket.io.min.js"
+></script>
+
+
+<!-- =====================================================
+     DASHBOARD JS
+===================================================== -->
+
+<script
+    src="{{ url_for('static', filename='js/dashboard.js') }}"
+></script>
+
+
+</body>
+
+</html>

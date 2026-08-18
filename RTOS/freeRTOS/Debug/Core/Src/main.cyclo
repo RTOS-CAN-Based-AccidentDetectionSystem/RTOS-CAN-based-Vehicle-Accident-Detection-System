@@ -1,0 +1,17 @@
+../Core/Src/main.c:145:5:main	1
+../Core/Src/main.c:258:6:SystemClock_Config	3
+../Core/Src/main.c:305:6:MX_CAN1_Init	2
+../Core/Src/main.c:340:6:MX_I2C1_Init	2
+../Core/Src/main.c:372:6:MX_USART1_UART_Init	2
+../Core/Src/main.c:403:6:MX_USART2_UART_Init	2
+../Core/Src/main.c:434:6:MX_GPIO_Init	1
+../Core/Src/main.c:450:6:SensorTask	7
+../Core/Src/main.c:495:6:HAL_CAN_RxFifo0MsgPendingCallback	4
+../Core/Src/main.c:518:6:AlertTask	4
+../Core/Src/main.c:545:6:GPSTask	4
+../Core/Src/main.c:573:16:GPS_ParseGGA	9
+../Core/Src/main.c:597:14:GPS_ToDecimalDegrees	3
+../Core/Src/main.c:614:6:GSMTask	4
+../Core/Src/main.c:661:6:TelemetryTask	5
+../Core/Src/main.c:701:6:HAL_UART_RxCpltCallback	5
+../Core/Src/main.c:733:6:Error_Handler	1

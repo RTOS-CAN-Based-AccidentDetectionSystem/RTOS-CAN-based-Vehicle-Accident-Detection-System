@@ -1,0 +1,21 @@
+/*
+ * gsm.h
+ *
+ *  Created on: 17-Aug-2026
+ *      Author: sunbeam
+ */
+
+
+#ifndef GSM_H
+#define GSM_H
+
+#include <stdint.h>
+
+#include "main.h"
+
+uint8_t GSM_HTTPPost(const char *url, const char *json_body);
+
+void GSM_Init(void);
+void GSM_SendSMS(const char *number, const char *message);
+
+#endif

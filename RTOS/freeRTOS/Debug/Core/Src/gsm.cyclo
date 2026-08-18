@@ -1,0 +1,5 @@
+../Core/Src/gsm.c:35:16:GSM_SendCmd	8
+../Core/Src/gsm.c:74:6:GSM_Init	1
+../Core/Src/gsm.c:81:9:GSM_SendSMS	1
+../Core/Src/gsm.c:106:6:GSM_HTTPInit	1
+../Core/Src/gsm.c:118:9:GSM_HTTPPost	1

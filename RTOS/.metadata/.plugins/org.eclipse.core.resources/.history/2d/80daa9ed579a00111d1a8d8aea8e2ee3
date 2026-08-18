@@ -1,0 +1,15 @@
+/*
+ * gsm.h
+ *
+ *  Created on: 17-Aug-2026
+ *      Author: sunbeam
+ */
+
+#ifndef INC_GSM_H_
+#define INC_GSM_H_
+
+
+void    GSM_HTTPInit(const char *apn);
+uint8_t GSM_HTTPPost(const char *url, const char *json_body);
+
+#endif /* INC_GSM_H_ */

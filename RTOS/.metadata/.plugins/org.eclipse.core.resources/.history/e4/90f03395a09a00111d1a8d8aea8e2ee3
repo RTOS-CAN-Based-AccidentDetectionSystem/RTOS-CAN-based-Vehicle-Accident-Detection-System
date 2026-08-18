@@ -1,0 +1,60 @@
+/*
+ * gsm.c
+ *
+ *  Created on: 17-Aug-2026
+ *      Author: sunbeam
+ */
+
+
+/* gsm.c additions */
+#include "gsm.h"
+#include "usart.h"
+#include <string.h>
+#include <stdio.h>
+
+extern UART_HandleTypeDef huart2;
+
+/* Reuse your existing "send AT cmd, block for response containing token"
+   helper if gsm.c already has one (e.g. GSM_SendCmd()); shown inline
+   here for completeness. */
+static uint8_t GSM_SendCmd(const char *cmd, const char *expect, uint32_t timeout_ms)
+{
+    char rxbuf[128] = {0};
+    HAL_UART_Transmit(&huart2, (uint8_t *)cmd, strlen(cmd), 1000);
+    HAL_UART_Receive(&huart2, (uint8_t *)rxbuf, sizeof(rxbuf) - 1, timeout_ms);
+    return (strstr(rxbuf, expect) != NULL);
+}
+
+void GSM_HTTPInit(const char *apn)
+{
+    char cmd[96];
+
+    GSM_SendCmd("AT+SAPBR=3,1,\"Contype\",\"GPRS\"\r\n", "OK", 2000);
+    snprintf(cmd, sizeof(cmd), "AT+SAPBR=3,1,\"APN\",\"%s\"\r\n", apn);
+    GSM_SendCmd(cmd, "OK", 2000);
+    GSM_SendCmd("AT+SAPBR=1,1\r\n", "OK", 5000);   /* open GPRS bearer */
+}
+
+uint8_t GSM_HTTPPost(const char *url, const char *json_body)
+{
+    char cmd[192];
+    uint16_t len = strlen(json_body);
+
+    GSM_SendCmd("AT+HTTPINIT\r\n", "OK", 2000);
+    GSM_SendCmd("AT+HTTPPARA=\"CID\",1\r\n", "OK", 1000);
+
+    snprintf(cmd, sizeof(cmd), "AT+HTTPPARA=\"URL\",\"%s\"\r\n", url);
+    GSM_SendCmd(cmd, "OK", 2000);
+
+    GSM_SendCmd("AT+HTTPPARA=\"CONTENT\",\"application/json\"\r\n", "OK", 1000);
+
+    snprintf(cmd, sizeof(cmd), "AT+HTTPDATA=%u,10000\r\n", len);
+    GSM_SendCmd(cmd, "DOWNLOAD", 2000);
+    HAL_UART_Transmit(&huart2, (uint8_t *)json_body, len, 5000);
+
+    uint8_t ok = GSM_SendCmd("AT+HTTPACTION=1\r\n", "+HTTPACTION: 1,200", 10000);
+
+    GSM_SendCmd("AT+HTTPTERM\r\n", "OK", 1000);
+
+    return ok;
+}

@@ -1,0 +1,834 @@
+/* USER CODE BEGIN Header */
+/**
+  ******************************************************************************
+  * @file           : main.c
+  * @brief          : Main program body
+  ******************************************************************************
+  * @attention
+  *
+  * Copyright (c) 2026 STMicroelectronics.
+  * All rights reserved.
+  *
+  * This software is licensed under terms that can be found in the LICENSE file
+  * in the root directory of this software component.
+  * If no LICENSE file comes with this software, it is provided AS-IS.
+  *
+  ******************************************************************************
+  */
+/* USER CODE END Header */
+/* Includes ------------------------------------------------------------------*/
+#include "main.h"
+#include "cmsis_os.h"
+
+/* Private includes ----------------------------------------------------------*/
+/* USER CODE BEGIN Includes */
+#include "main.h"
+#include "FreeRTOS.h"
+#include "task.h"
+#include "queue.h"
+#include "semphr.h"
+#include "can.h"
+#include "i2c.h"
+#include "usart.h"
+#include "lcd.h"
+#include "gsm.h"
+#include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
+/* USER CODE END Includes */
+
+/* Private typedef -----------------------------------------------------------*/
+/* USER CODE BEGIN PTD */
+
+/* USER CODE END PTD */
+
+/* Private define ------------------------------------------------------------*/
+/* USER CODE BEGIN PD */
+#define ACCEL_THRESHOLD        8000    /* raw LSB, ~0.5g on +-2g range; tune to your sensor mount */
+#define ACCEL_DEBOUNCE_COUNT   3       /* consecutive over-threshold samples required */
+#define GSM_ALERT_NUMBER       "+918080190968"
+#define GSM_RETRY_COOLDOWN_MS  15000
+
+/* ---- GPRS / HTTP telemetry config ---- */
+#define GSM_APN                 "your.apn.here"      /* <-- set to your carrier's APN */
+#define TELEMETRY_URL            "http://your-server-ip:5000/api/telemetry"
+#define TELEMETRY_RETRY_COOLDOWN_MS 2000               /* min gap between POSTs */
+
+/* USER CODE END PD */
+
+/* Private macro -------------------------------------------------------------*/
+/* USER CODE BEGIN PM */
+/* ---------------- Tunables ---------------- */
+
+/* USER CODE END PM */
+
+/* Private variables ---------------------------------------------------------*/
+CAN_HandleTypeDef hcan1;
+
+I2C_HandleTypeDef hi2c1;
+
+UART_HandleTypeDef huart1;
+UART_HandleTypeDef huart2;
+
+osThreadId defaultTaskHandle;
+/* USER CODE BEGIN PV */
+extern CAN_HandleTypeDef hcan1;
+extern I2C_HandleTypeDef hi2c1;
+extern UART_HandleTypeDef huart1;   /* GPS module   */
+extern UART_HandleTypeDef huart2;   /* GSM module   */
+typedef struct {
+    uint8_t accident;
+} AccidentStatus_t;
+
+typedef struct {
+    float   latitude;
+    float   longitude;
+    uint8_t valid;
+} GpsData_t;
+
+/* Event pushed to TelemetryTask - just the accident flag; TelemetryTask
+   fetches its own fresh GPS snapshot at send time so the payload always
+   reflects the latest fix rather than whatever fix existed the moment
+   the accident fired. */
+typedef struct {
+    uint8_t accident;
+} DashboardEvent_t;
+
+CAN_TxHeaderTypeDef TxHeader;
+CAN_RxHeaderTypeDef RxHeader;
+uint32_t TxMailbox;
+uint8_t  TxData[1];
+uint8_t  RxData[8];
+
+uint8_t  gps_rx;
+char     gps_buffer[160];
+volatile uint16_t gps_index = 0;
+volatile uint8_t  gps_sentence_ready = 0;
+char     gps_sentence_copy[160];
+
+GpsData_t gpsData = {0};
+
+/* ---------------- RTOS handles (raw FreeRTOS API) ---------------- */
+QueueHandle_t alertQueueHandle;   /* fused local+CAN accident events -> AlertTask (routing only) */
+QueueHandle_t gsmQueueHandle;     /* accident events that should trigger an SMS */
+QueueHandle_t uiQueueHandle;      /* accident events that should be POSTed to the dashboard server */
+SemaphoreHandle_t gpsMutexHandle;
+
+TaskHandle_t sensorTaskHandle;
+TaskHandle_t alertTaskHandle;
+TaskHandle_t gpsTaskHandle;
+TaskHandle_t gsmTaskHandle;
+TaskHandle_t telemetryTaskHandle;
+/* USER CODE END PV */
+
+/* Private function prototypes -----------------------------------------------*/
+void SystemClock_Config(void);
+static void MX_GPIO_Init(void);
+static void MX_CAN1_Init(void);
+static void MX_I2C1_Init(void);
+static void MX_USART1_UART_Init(void);
+static void MX_USART2_UART_Init(void);
+void StartDefaultTask(void const * argument);
+
+/* USER CODE BEGIN PFP */
+void SensorTask(void *argument);
+void AlertTask(void *argument);
+void GPSTask(void *argument);
+void GSMTask(void *argument);
+void TelemetryTask(void *argument);
+
+/* ---------------- NMEA helpers ---------------- */
+static uint8_t GPS_ParseGGA(const char *sentence, GpsData_t *out);
+static float   GPS_ToDecimalDegrees(const char *raw, char hemisphere);
+/* USER CODE END PFP */
+
+/* Private user code ---------------------------------------------------------*/
+/* USER CODE BEGIN 0 */
+
+/* USER CODE END 0 */
+
+/**
+  * @brief  The application entry point.
+  * @retval int
+  */
+int main(void)
+{
+
+  /* USER CODE BEGIN 1 */
+
+  /* USER CODE END 1 */
+
+  /* MCU Configuration--------------------------------------------------------*/
+
+  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
+  HAL_Init();
+
+  /* USER CODE BEGIN Init */
+
+  /* USER CODE END Init */
+
+  /* Configure the system clock */
+  SystemClock_Config();
+
+  /* USER CODE BEGIN SysInit */
+
+  /* USER CODE END SysInit */
+
+  /* Initialize all configured peripherals */
+  MX_GPIO_Init();
+  MX_CAN1_Init();
+  MX_I2C1_Init();
+  MX_USART1_UART_Init();
+  MX_USART2_UART_Init();
+  /* USER CODE BEGIN 2 */
+  lcd_init();
+      GSM_Init();
+      GSM_HTTPInit(GSM_APN);   /* bring up GPRS bearer once at boot */
+  /* USER CODE END 2 */
+
+  /* USER CODE BEGIN RTOS_MUTEX */
+  /* add mutexes, ... */
+  /* USER CODE END RTOS_MUTEX */
+
+  /* USER CODE BEGIN RTOS_SEMAPHORES */
+  /* add semaphores, ... */
+  /* USER CODE END RTOS_SEMAPHORES */
+
+  /* USER CODE BEGIN RTOS_TIMERS */
+  /* start timers, add new ones, ... */
+  /* USER CODE END RTOS_TIMERS */
+
+  /* USER CODE BEGIN RTOS_QUEUES */
+  /* add queues, ... */
+  /* USER CODE END RTOS_QUEUES */
+
+  /* Create the thread(s) */
+  /* definition and creation of defaultTask */
+  osThreadDef(defaultTask, StartDefaultTask, osPriorityNormal, 0, 128);
+  defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
+
+  /* USER CODE BEGIN RTOS_THREADS */
+  /* add threads, ... */
+  /* USER CODE END RTOS_THREADS */
+
+  /* Start scheduler */
+  osKernelStart();
+
+  /* We should never get here as control is now taken by the scheduler */
+
+  /* Infinite loop */
+  /* USER CODE BEGIN WHILE */
+  while (1)
+  {
+    /* USER CODE END WHILE */
+
+    /* USER CODE BEGIN 3 */
+  }
+  /* USER CODE END 3 */
+}
+
+/**
+  * @brief System Clock Configuration
+  * @retval None
+  */
+void SystemClock_Config(void)
+{
+  RCC_OscInitTypeDef RCC_OscInitStruct = {0};
+  RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+
+  /** Configure the main internal regulator output voltage
+  */
+  __HAL_RCC_PWR_CLK_ENABLE();
+  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
+
+  /** Initializes the RCC Oscillators according to the specified parameters
+  * in the RCC_OscInitTypeDef structure.
+  */
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+  RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+  RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
+  RCC_OscInitStruct.PLL.PLLM = 8;
+  RCC_OscInitStruct.PLL.PLLN = 168;
+  RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
+  RCC_OscInitStruct.PLL.PLLQ = 7;
+  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Initializes the CPU, AHB and APB buses clocks
+  */
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
+                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
+  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV4;
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV2;
+
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_5) != HAL_OK)
+  {
+    Error_Handler();
+  }
+}
+
+/**
+  * @brief CAN1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_CAN1_Init(void)
+{
+
+  /* USER CODE BEGIN CAN1_Init 0 */
+
+  /* USER CODE END CAN1_Init 0 */
+
+  /* USER CODE BEGIN CAN1_Init 1 */
+
+  /* USER CODE END CAN1_Init 1 */
+  hcan1.Instance = CAN1;
+  hcan1.Init.Prescaler = 16;
+  hcan1.Init.Mode = CAN_MODE_NORMAL;
+  hcan1.Init.SyncJumpWidth = CAN_SJW_1TQ;
+  hcan1.Init.TimeSeg1 = CAN_BS1_1TQ;
+  hcan1.Init.TimeSeg2 = CAN_BS2_1TQ;
+  hcan1.Init.TimeTriggeredMode = DISABLE;
+  hcan1.Init.AutoBusOff = DISABLE;
+  hcan1.Init.AutoWakeUp = DISABLE;
+  hcan1.Init.AutoRetransmission = DISABLE;
+  hcan1.Init.ReceiveFifoLocked = DISABLE;
+  hcan1.Init.TransmitFifoPriority = DISABLE;
+  if (HAL_CAN_Init(&hcan1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN CAN1_Init 2 */
+
+  /* USER CODE END CAN1_Init 2 */
+
+}
+
+/**
+  * @brief I2C1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C1_Init(void)
+{
+
+  /* USER CODE BEGIN I2C1_Init 0 */
+
+  /* USER CODE END I2C1_Init 0 */
+
+  /* USER CODE BEGIN I2C1_Init 1 */
+
+  /* USER CODE END I2C1_Init 1 */
+  hi2c1.Instance = I2C1;
+  hi2c1.Init.ClockSpeed = 100000;
+  hi2c1.Init.DutyCycle = I2C_DUTYCYCLE_2;
+  hi2c1.Init.OwnAddress1 = 0;
+  hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c1.Init.OwnAddress2 = 0;
+  hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN I2C1_Init 2 */
+
+  /* USER CODE END I2C1_Init 2 */
+
+}
+
+/**
+  * @brief USART1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART1_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART1_Init 0 */
+
+  /* USER CODE END USART1_Init 0 */
+
+  /* USER CODE BEGIN USART1_Init 1 */
+
+  /* USER CODE END USART1_Init 1 */
+  huart1.Instance = USART1;
+  huart1.Init.BaudRate = 9600;
+  huart1.Init.WordLength = UART_WORDLENGTH_8B;
+  huart1.Init.StopBits = UART_STOPBITS_1;
+  huart1.Init.Parity = UART_PARITY_NONE;
+  huart1.Init.Mode = UART_MODE_TX_RX;
+  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART1_Init 2 */
+
+  /* USER CODE END USART1_Init 2 */
+
+}
+
+/**
+  * @brief USART2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART2_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART2_Init 0 */
+
+  /* USER CODE END USART2_Init 0 */
+
+  /* USER CODE BEGIN USART2_Init 1 */
+
+  /* USER CODE END USART2_Init 1 */
+  huart2.Instance = USART2;
+  huart2.Init.BaudRate = 9600;
+  huart2.Init.WordLength = UART_WORDLENGTH_8B;
+  huart2.Init.StopBits = UART_STOPBITS_1;
+  huart2.Init.Parity = UART_PARITY_NONE;
+  huart2.Init.Mode = UART_MODE_TX_RX;
+  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART2_Init 2 */
+
+  /* USER CODE END USART2_Init 2 */
+
+}
+
+/**
+  * @brief GPIO Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_GPIO_Init(void)
+{
+  /* USER CODE BEGIN MX_GPIO_Init_1 */
+
+  /* USER CODE END MX_GPIO_Init_1 */
+
+  /* GPIO Ports Clock Enable */
+  __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
+
+  /* USER CODE BEGIN MX_GPIO_Init_2 */
+
+  /* USER CODE END MX_GPIO_Init_2 */
+}
+
+/* USER CODE BEGIN 4 */
+
+/* USER CODE END 4 */
+
+/* USER CODE BEGIN Header_StartDefaultTask */
+/**
+  * @brief  Function implementing the defaultTask thread.
+  * @param  argument: Not used
+  * @retval None
+  */
+/* USER CODE END Header_StartDefaultTask */
+void StartDefaultTask(void const * argument)
+{
+  /* USER CODE BEGIN 5 */
+  /* Infinite loop */
+  for(;;)
+  {
+    osDelay(1);
+  }
+  /* USER CODE END 5 */
+}
+
+/**
+  * @brief  This function is executed in case of error occurrence.
+  * @retval None
+  */
+void Error_Handler(void)
+{
+  /* USER CODE BEGIN Error_Handler_Debug */
+  /* User can add his own implementation to report the HAL error return state */
+  __disable_irq();
+  while (1)
+  {
+  }
+  /* USER CODE END Error_Handler_Debug */
+}
+#ifdef USE_FULL_ASSERT
+/**
+  * @brief  Reports the name of the source file and the source line number
+  *         where the assert_param error has occurred.
+  * @param  file: pointer to the source file name
+  * @param  line: assert_param error line source number
+  * @retval None
+  */
+void assert_failed(uint8_t *file, uint32_t line)
+{
+  /* USER CODE BEGIN 6 */
+  /* User can add his own implementation to report the file name and line number,
+     ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
+  /* USER CODE END 6 */
+}
+#endif /* USE_FULL_ASSERT */
+
+
+
+
+
+
+
+
+
+int main(void)
+{
+    HAL_Init();
+    SystemClock_Config();
+    MX_GPIO_Init();
+    MX_CAN1_Init();
+    MX_I2C1_Init();
+    MX_USART1_UART_Init();
+    MX_USART2_UART_Init();
+
+    lcd_init();
+    GSM_Init();
+    GSM_HTTPInit(GSM_APN);   /* bring up GPRS bearer once at boot */
+
+    /* --- CAN filter: accept all (adjust if you have multiple node types) --- */
+    CAN_FilterTypeDef filter = {0};
+    filter.FilterBank = 0;
+    filter.FilterMode = CAN_FILTERMODE_IDMASK;
+    filter.FilterScale = CAN_FILTERSCALE_32BIT;
+    filter.FilterIdHigh = 0;
+    filter.FilterIdLow = 0;
+    filter.FilterMaskIdHigh = 0;
+    filter.FilterMaskIdLow = 0;
+    filter.FilterFIFOAssignment = CAN_RX_FIFO0;
+    filter.FilterActivation = ENABLE;
+    HAL_CAN_ConfigFilter(&hcan1, &filter);
+
+    TxHeader.StdId = 0x100;
+    TxHeader.IDE   = CAN_ID_STD;
+    TxHeader.RTR   = CAN_RTR_DATA;
+    TxHeader.DLC   = 1;
+
+    HAL_CAN_Start(&hcan1);
+    HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING);
+
+    HAL_UART_Receive_IT(&huart1, &gps_rx, 1);
+
+    /* ---- Create queues (depth, item size) ---- */
+    alertQueueHandle = xQueueCreate(8, sizeof(AccidentStatus_t));
+    gsmQueueHandle   = xQueueCreate(4, sizeof(AccidentStatus_t));
+    uiQueueHandle    = xQueueCreate(8, sizeof(DashboardEvent_t));
+
+    /* ---- Create mutex ---- */
+    gpsMutexHandle = xSemaphoreCreateMutex();
+
+    /* ---- Create tasks ---- */
+    xTaskCreate(SensorTask,    "SensorTask",    640,  NULL, tskIDLE_PRIORITY + 3, &sensorTaskHandle);
+    xTaskCreate(AlertTask,     "AlertTask",     512,  NULL, tskIDLE_PRIORITY + 2, &alertTaskHandle);
+    xTaskCreate(GPSTask,       "GPSTask",       1024, NULL, tskIDLE_PRIORITY + 1, &gpsTaskHandle);
+    xTaskCreate(GSMTask,       "GSMTask",       1024, NULL, tskIDLE_PRIORITY + 2, &gsmTaskHandle);
+    xTaskCreate(TelemetryTask, "TelemetryTask", 1024, NULL, tskIDLE_PRIORITY + 1, &telemetryTaskHandle);
+
+    vTaskStartScheduler();
+
+    /* Should never reach here */
+    while (1) {}
+}
+
+/* =====================================================================
+ * SensorTask
+ * =====================================================================
+ */
+void SensorTask(void *argument)
+{
+    uint8_t raw[6];
+    uint8_t wake = 0;
+    uint8_t overThresholdCount = 0;
+    AccidentStatus_t msg;
+
+    HAL_I2C_Mem_Write(&hi2c1, 0x68 << 1, 0x6B,
+                       I2C_MEMADD_SIZE_8BIT, &wake, 1, 100);
+
+    for (;;)
+    {
+        if (HAL_I2C_Mem_Read(&hi2c1, 0x68 << 1, 0x3B,
+                              I2C_MEMADD_SIZE_8BIT, raw, 6, 100) == HAL_OK)
+        {
+            int16_t ax = (int16_t)((raw[0] << 8) | raw[1]);
+            int16_t ay = (int16_t)((raw[2] << 8) | raw[3]);
+            int16_t az = (int16_t)((raw[4] << 8) | raw[5]);
+
+            uint8_t overThreshold =
+                (abs(ax) > ACCEL_THRESHOLD ||
+                 abs(ay) > ACCEL_THRESHOLD ||
+                 abs(az) > ACCEL_THRESHOLD) ? 1 : 0;
+
+            overThresholdCount = overThreshold ? (overThresholdCount + 1) : 0;
+
+            if (overThresholdCount >= ACCEL_DEBOUNCE_COUNT)
+            {
+                overThresholdCount = 0;
+                msg.accident = 1;
+
+                TxData[0] = 1;
+                HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox);
+
+                xQueueSend(alertQueueHandle, &msg, 0);
+            }
+        }
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
+}
+
+/* =====================================================================
+ * CAN Rx callback (ISR context)
+ * =====================================================================
+ */
+void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
+{
+    AccidentStatus_t msg;
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+
+    if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader, RxData) == HAL_OK)
+    {
+        msg.accident = RxData[0] ? 1 : 0;
+        if (msg.accident)
+        {
+            xQueueSendFromISR(alertQueueHandle, &msg, &xHigherPriorityTaskWoken);
+        }
+    }
+
+    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+}
+
+/* =====================================================================
+ * AlertTask - single consumer of the fused alert queue. Updates the LCD
+ * and fans the event out to BOTH the GSM task (SMS) and the telemetry
+ * task (HTTP POST to Flask).
+ * =====================================================================
+ */
+void AlertTask(void *argument)
+{
+    AccidentStatus_t msg;
+    DashboardEvent_t dash;
+
+    for (;;)
+    {
+        if (xQueueReceive(alertQueueHandle, &msg, portMAX_DELAY) == pdPASS)
+        {
+            lcd_clear();
+            lcd_puts(LCD_LINE2, msg.accident ? "ACCIDENT" : "SAFE");
+
+            if (msg.accident)
+            {
+                xQueueSend(gsmQueueHandle, &msg, 0);
+
+                dash.accident = msg.accident;
+                xQueueSend(uiQueueHandle, &dash, 0);
+            }
+        }
+    }
+}
+
+/* =====================================================================
+ * GPSTask
+ * =====================================================================
+ */
+void GPSTask(void *argument)
+{
+    GpsData_t parsed;
+
+    for (;;)
+    {
+        if (gps_sentence_ready)
+        {
+            taskENTER_CRITICAL();
+            strncpy(gps_sentence_copy, gps_buffer, sizeof(gps_sentence_copy) - 1);
+            gps_sentence_copy[sizeof(gps_sentence_copy) - 1] = '\0';
+            gps_sentence_ready = 0;
+            taskEXIT_CRITICAL();
+
+            if (strncmp(gps_sentence_copy, "$GPGGA", 6) == 0)
+            {
+                if (GPS_ParseGGA(gps_sentence_copy, &parsed))
+                {
+                    xSemaphoreTake(gpsMutexHandle, portMAX_DELAY);
+                    gpsData = parsed;
+                    xSemaphoreGive(gpsMutexHandle);
+                }
+            }
+        }
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+}
+
+static uint8_t GPS_ParseGGA(const char *sentence, GpsData_t *out)
+{
+    char copy[160];
+    strncpy(copy, sentence, sizeof(copy) - 1);
+    copy[sizeof(copy) - 1] = '\0';
+
+    char *field[7] = {0};
+    char *tok = strtok(copy, ",");
+    for (int i = 0; i < 7 && tok != NULL; i++)
+    {
+        field[i] = tok;
+        tok = strtok(NULL, ",");
+    }
+    if (!field[2] || !field[3] || !field[4] || !field[5] || !field[6])
+        return 0;
+    if (field[6][0] == '0')
+        return 0;
+
+    out->latitude  = GPS_ToDecimalDegrees(field[2], field[3][0]);
+    out->longitude = GPS_ToDecimalDegrees(field[4], field[5][0]);
+    out->valid = 1;
+    return 1;
+}
+
+static float GPS_ToDecimalDegrees(const char *raw, char hemisphere)
+{
+    float value = atof(raw);
+    int degrees = (int)(value / 100);
+    float minutes = value - (degrees * 100);
+    float decimal = degrees + (minutes / 60.0f);
+
+    if (hemisphere == 'S' || hemisphere == 'W')
+        decimal = -decimal;
+
+    return decimal;
+}
+
+/* =====================================================================
+ * GSMTask - sends the SMS, including GPS coordinates if we have a fix.
+ * =====================================================================
+ */
+void GSMTask(void *argument)
+{
+    AccidentStatus_t msg;
+    char text[140];
+    GpsData_t gpsSnapshot;
+
+    for (;;)
+    {
+        if (xQueueReceive(gsmQueueHandle, &msg, portMAX_DELAY) == pdPASS)
+        {
+            if (msg.accident)
+            {
+                xSemaphoreTake(gpsMutexHandle, portMAX_DELAY);
+                gpsSnapshot = gpsData;
+                xSemaphoreGive(gpsMutexHandle);
+
+                if (gpsSnapshot.valid)
+                {
+                    snprintf(text, sizeof(text),
+                             "ACCIDENT DETECTED! Location: https://maps.google.com/?q=%.6f,%.6f",
+                             gpsSnapshot.latitude, gpsSnapshot.longitude);
+                }
+                else
+                {
+                    snprintf(text, sizeof(text),
+                             "ACCIDENT DETECTED! GPS fix not available yet.");
+                }
+
+                GSM_SendSMS(GSM_ALERT_NUMBER, text);
+                vTaskDelay(pdMS_TO_TICKS(GSM_RETRY_COOLDOWN_MS));
+            }
+        }
+    }
+}
+
+/* =====================================================================
+ * TelemetryTask - consumes uiQueueHandle and POSTs a JSON payload to
+ * your Flask app (app.py -> /api/telemetry -> db.py) over the GSM
+ * module's GPRS/HTTP AT stack. Also keeps a local LCD readout as a
+ * cheap backup display since the LCD is otherwise idle.
+ *
+ * NOTE: GSM_HTTPPost() shares huart2 with GSM_SendSMS(). Both tasks
+ * touch the same UART, so if you see interleaved/corrupted AT traffic
+ * under load, wrap huart2 access in its own mutex (gsmUartMutexHandle)
+ * and take/give it inside GSM_SendSMS() and GSM_HTTPPost().
+ * =====================================================================
+ */
+void TelemetryTask(void *argument)
+{
+    DashboardEvent_t evt;
+    GpsData_t gpsSnapshot;
+    char json[192];
+
+    for (;;)
+    {
+        if (xQueueReceive(uiQueueHandle, &evt, portMAX_DELAY) == pdPASS)
+        {
+            xSemaphoreTake(gpsMutexHandle, portMAX_DELAY);
+            gpsSnapshot = gpsData;
+            xSemaphoreGive(gpsMutexHandle);
+
+            if (gpsSnapshot.valid)
+            {
+                snprintf(json, sizeof(json),
+                         "{\"accident\":%d,\"lat\":%.6f,\"lon\":%.6f,\"fix\":true}",
+                         evt.accident, gpsSnapshot.latitude, gpsSnapshot.longitude);
+            }
+            else
+            {
+                snprintf(json, sizeof(json),
+                         "{\"accident\":%d,\"lat\":null,\"lon\":null,\"fix\":false}",
+                         evt.accident);
+            }
+
+            GSM_HTTPPost(TELEMETRY_URL, json);
+
+            lcd_clear();
+            lcd_puts(LCD_LINE1, evt.accident ? "ACCIDENT" : "SAFE");
+            lcd_puts(LCD_LINE2, gpsSnapshot.valid ? "GPS OK - SENT" : "NO FIX - SENT");
+
+            vTaskDelay(pdMS_TO_TICKS(TELEMETRY_RETRY_COOLDOWN_MS));
+        }
+    }
+}
+
+/* =====================================================================
+ * GPS UART Rx interrupt
+ * =====================================================================
+ */
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+    if (huart->Instance == USART1)
+    {
+        if (gps_rx == '\r')
+        {
+            /* ignore CR, wait for LF to terminate the sentence */
+        }
+        else if (gps_rx == '\n')
+        {
+            gps_buffer[gps_index] = '\0';
+            gps_index = 0;
+            gps_sentence_ready = 1;
+        }
+        else if (gps_index < sizeof(gps_buffer) - 1)
+        {
+            gps_buffer[gps_index++] = gps_rx;
+        }
+        else
+        {
+            gps_index = 0;
+        }
+
+        HAL_UART_Receive_IT(&huart1, &gps_rx, 1);
+    }
+}

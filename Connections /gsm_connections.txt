@@ -1,0 +1,6 @@
+SIM800L Connections:
+
+TX → STM32 RX (USART2)
+RX → STM32 TX (USART2)
+GND → GND
+VCC → 3.7V Battery

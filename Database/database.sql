@@ -1,0 +1,8 @@
+CREATE DATABASE Accident_Detection_System;
+
+USE Accident_Detection_System;
+
+CREATE TABLE vehicle_info(Vehicle_No VARCHAR(20) PRIMARY KEY ,Vehicle_Type VARCHAR(50) NOT NULL, Owner VARCHAR(100) NOT NULL,Phone VARCHAR(15) NOT NULL);
+
+
+CREATE TABLE accident_info(Accident_ID INT AUTO_INCREMENT PRIMARY KEY,Vehicle_No VARCHAR(20) NOT NULL,Latitude DECIMAL(10,7) NOT NULL,longitude DECIMAL(10,7) NOT NULL,Time TIMESTAMP DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (Vehicle_No) REFERENCES vehicle_info(Vehicle_No));

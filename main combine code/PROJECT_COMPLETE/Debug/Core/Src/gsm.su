@@ -1,0 +1,2 @@
+../Core/Src/gsm.c:20:6:GSM_SendCommand	16	static
+../Core/Src/gsm.c:29:6:GSM_SendSMS	24	static
